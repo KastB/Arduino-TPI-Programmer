@@ -29,6 +29,9 @@
  *    C = clear fuse. follow the instructions to clear
  *        one of the three fuses.
  *
+ *    L = Set Lock Bits No further programming & verification
+ *        possible
+ *
  *    H = Toggle High Voltage Programming  
  *
  *    T = Toggle +12v enabled by High, or Low
@@ -63,8 +66,13 @@
  * this is based                                  *
  **************************************************
  Updates:
-   Dec 04, 2017: thejamestate@gmail.com
-   		* Added support for ATtiny102 and ATtiny104
+ 
+   Apr 02, 2018: Ksdsksd@gmail.com
+                * Added Lock bit setting to main menu
+                
+    Dec 04, 2017: thejamestate@gmail.com
+        		* Added support for ATtiny102 and ATtiny104
+
    Jan 23, 2017: Ksdsksd@gmail.com
                 * Thanks to InoueTaichi Fixed incorrect #define Tiny40 
                 
@@ -184,6 +192,7 @@ void setup(){
 
 */  start_tpi();
 
+
   pinMode(HVReset, OUTPUT);
  // initialize memory pointer register
  setPointer(0x0000);
@@ -244,13 +253,34 @@ void start_tpi() {
   SPI.transfer(0xff); // while holding TPIDATA to "1"
 
   writeCSS(0x02, 0x04); // TPIPCR, guard time = 8bits (default=128)
+
   send_skey(NVM_PROGRAM_ENABLE); // enable NVM interface
   // wait for NVM to be enabled
-
   while((readCSS(0x00) & 0x02) < 1){
     // wait
   }
   Serial.println(F("NVM enabled"));
+}
+
+void setLockBits(){
+
+  Serial.print(F("Locking... Are you sure? Y/N"));
+  while(Serial.available() < 1);
+  char yn = Serial.read();
+  if(yn == 'n' || yn == 'N')
+    return;
+
+  setPointer(0x3F00);
+  writeIO(NVMCMD, NVM_WORD_WRITE);
+  tpi_send_byte(SSTp);
+  tpi_send_byte(0);
+
+  tpi_send_byte(SSTp);
+  tpi_send_byte(0xFF);
+
+
+  while((readIO(NVMCSR) & (1<<7)) != 0x00);
+  Serial.print(F("Locked..."));
 }
 
 void loop(){
@@ -273,6 +303,7 @@ void loop(){
   //** 'E' = erase chip. erases current program memory.(done automatically by 'P')
   //** 'S' = set fuse
   //** 'C' = clear fuse
+  //** 'L' = Set Lock Bits
 
   char comnd = Sread();
 
@@ -317,6 +348,10 @@ void loop(){
   case 'C':
     setConfig(false);
     break;
+
+    case 'L':
+      setLockBits();
+      break;
 
   default:
     Serial.println(F("Received unknown command"));
@@ -647,13 +682,13 @@ void setConfig(boolean val){
 	tpi_send_byte(0xFF);
   }else if(comnd == 'r'){
     tpi_send_byte(SSTp);
-	if(val){
-	  tpi_send_byte(b & 0b11111110);
+    if(val){
+      tpi_send_byte(b & 0b11111110);
     }else{
       tpi_send_byte(b | 0x01);
     }
-	tpi_send_byte(SSTp);
-	tpi_send_byte(0xFF);
+    tpi_send_byte(SSTp);
+    tpi_send_byte(0xFF);
   }else if(comnd == 'x'){
     // do nothing
   }else{
